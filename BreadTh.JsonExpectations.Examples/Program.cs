@@ -86,7 +86,7 @@ void PrintIfInnerMessageIsHello(MyModel result)
     //as if they were their corresponding primitive.
     if(result.Excited == "Hello World!")
         //likewise when we want to serialized, the result will come out as if was just a bunch of primitives.
-        Console.WriteLine("\t" + result.ToJsonString().Replace("\n", "\n\t"));
+        Console.WriteLine("\t" + result.ToJsonString(true).Replace("\n", "\n\t"));
 }
 
 public class MyModel : JsonObjectExpectation<MyModel>
@@ -143,7 +143,7 @@ public class MyModel : JsonObjectExpectation<MyModel>
     public MyBool Boolean2 { get; set; } = null!;
     
     [Required]
-    public MyBool Boolean3 { get; set; } = null;
+    public MyBool Boolean3 { get; set; } = null!;
 
     [Required]
     public StringifiedObject StringifiedObject { get; set; } = null!;

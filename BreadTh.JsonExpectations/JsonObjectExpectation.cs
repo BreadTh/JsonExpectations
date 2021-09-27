@@ -119,8 +119,8 @@ public abstract class JsonObjectExpectation<TSelf> : IJsonRootExpectation<TSelf>
         return result;
     }
 
-    public string ToJsonString() =>
-        ToJsonNode("").ToJsonString();
+    public string ToJsonString(bool indented = false) =>
+        ToJsonNode("").ToJsonString(new JsonSerializerOptions(){ WriteIndented = indented });
 
     private static OneOf<ExpectationViolations, TSelf> FromStringifiedObject(string stringObject, string path, bool required)
     {

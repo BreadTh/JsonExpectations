@@ -7,6 +7,6 @@ public interface IJsonRootExpectation<TSelf> : IJsonExpectation<TSelf> where TSe
 {
     static abstract OneOf<ExpectationViolations, TSelf> FromJsonString(string rawJson);
 
-    string ToJsonString();
+    string ToJsonString(bool indented);
 }
 
