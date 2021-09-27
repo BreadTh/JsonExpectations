@@ -1,10 +1,11 @@
 ﻿using Apparatus.AOT.Reflection;
 using BreadTh.DataLayoutExpectations;
 using BreadTh.DataLayoutExpectations.Error;
-using Newtonsoft.Json;
 using OneOf;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 //You should always set your culture in your applications, even if you aren't using this library.
 //Set it to your local CultureInfo if need be, but don't let it depend on the runtime environment.
@@ -25,7 +26,7 @@ GenericHelper.Bootstrap<StringifiedObject>();
 
 //let's make some json string example data to run JsonExpectation parser on.
 //We're using a dictionary rather than an anonymous object to be able to use the specialProperty name.
-string successText = JsonConvert.SerializeObject(new Dictionary<string, object>
+string successText = JsonSerializer.Serialize(new Dictionary<string, object>
 {
     { "Required", "Hi." },
     { "Excited", "Hello World!"},
@@ -44,7 +45,7 @@ string successText = JsonConvert.SerializeObject(new Dictionary<string, object>
     { "StringifiedObject", "{\"Field\": \"Value\"}"}
 });
 
-string failText = JsonConvert.SerializeObject(new Dictionary<string, object>
+string failText = JsonSerializer.Serialize(new Dictionary<string, object>
 {
     { "Excited", "Hello World" },
     { "InternationalGreetings", new List<string> { "Hi", "Hello", "Hey", "What's up" }},
@@ -62,15 +63,10 @@ string failText = JsonConvert.SerializeObject(new Dictionary<string, object>
 });
 
 //Now to actually run the parsing
-//Let's do some (inaccurate) benchmarking while we're at it.
 Console.WriteLine("Parsing successText:");
-DateTime before = DateTime.UtcNow;
 Print(MyModel.FromJsonString(successText));
-Console.WriteLine("Took: " + (DateTime.UtcNow - before).TotalMilliseconds + "ms");
 Console.WriteLine("\nParsing failText:");
-before = DateTime.UtcNow;
 Print(MyModel.FromJsonString(failText));
-Console.WriteLine("Took: " + (DateTime.UtcNow - before).TotalMilliseconds + "ms");
 Console.ReadLine();
 
 //The result of FromJsonString is a "OneOf". OneOf is a representation of multiple outcomes.
@@ -115,7 +111,7 @@ public class MyModel : JsonObjectExpectation<MyModel>
     }
 
     [Required]
-    [JsonProperty("Spec!al::Property")]
+    [JsonPropertyName("Spec!al::Property")]
     public Message SpecialProperty { get; set; } = null!;
 
     [Required]

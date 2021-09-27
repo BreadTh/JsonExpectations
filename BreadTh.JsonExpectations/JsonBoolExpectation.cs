@@ -1,28 +1,28 @@
-﻿using Newtonsoft.Json.Linq;
-using OneOf;
+﻿using OneOf;
 using BreadTh.DataLayoutExpectations.Mcintyre321.ValueOf;
 using BreadTh.DataLayoutExpectations.Interface;
 using BreadTh.DataLayoutExpectations.Error;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace BreadTh.DataLayoutExpectations;
 
 public abstract class JsonBoolExpectation<TSelf> : ValueOf<bool, TSelf>, IJsonExpectation<TSelf>
     where TSelf : JsonBoolExpectation<TSelf>, IValueOf<bool, TSelf>, new()
 {
-    public static OneOf<ExpectationViolations, TSelf> From(JToken token, string path, bool required) =>
-        token.Type switch
+    public static OneOf<ExpectationViolations, TSelf> From(JsonElement element, string path, bool required) =>
+        element.ValueKind switch
         {
-            JTokenType.None => NullHandle(path, required),
-            JTokenType.Null => NullHandle(path, required),
-            JTokenType.Undefined => NullHandle(path, required),
-            JTokenType.Object => new ExpectationViolations("5b79061f-4e69-4d3b-80f3-839cd262d05f", $"@({path}) Expected a primitive, but got an object."),
-            JTokenType.Array => new ExpectationViolations("df252cff-fcf0-4c0d-a61a-b0e7bccf473b", $"@({path}) Expected a primitive, but got an array."),
-            _ => ParseAndValidate(token, path)
+            JsonValueKind.Null => NullHandle(path, required),
+            JsonValueKind.Undefined => NullHandle(path, required),
+            JsonValueKind.Object => new ExpectationViolations("5b79061f-4e69-4d3b-80f3-839cd262d05f", $"@({path}) Expected a primitive, but got an object."),
+            JsonValueKind.Array => new ExpectationViolations("df252cff-fcf0-4c0d-a61a-b0e7bccf473b", $"@({path}) Expected a primitive, but got an array."),
+            _ => ParseAndValidate(element, path)
         };
 
-    private static OneOf<ExpectationViolations, TSelf> ParseAndValidate(JToken token, string path)
+    private static OneOf<ExpectationViolations, TSelf> ParseAndValidate(JsonElement element, string path)
     {
-        var stringValue = token.ToString();
+        var stringValue = element.ToString();
 
         return stringValue.ToLower() switch
         {
@@ -40,8 +40,8 @@ public abstract class JsonBoolExpectation<TSelf> : ValueOf<bool, TSelf>, IJsonEx
     protected static OneOf<ExpectationViolations, TSelf> NullHandle(string path, bool required) =>
         required ? new ExpectationViolations("b09fbdba-b96b-46ad-8e0f-409d0a5da578", $"@({path}) Expected a value, but got nothing.") : (TSelf)null;
 
-    public JToken ToJToken(string path) =>
-        new JValue(Value);
+    public JsonNode ToJsonNode(string path) =>
+        Value;
 
     public static bool operator ==(JsonBoolExpectation<TSelf> wrapped, bool primitive) =>
         wrapped.Value == primitive;

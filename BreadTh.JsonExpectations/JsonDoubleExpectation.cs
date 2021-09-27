@@ -1,28 +1,28 @@
-﻿using Newtonsoft.Json.Linq;
-using OneOf;
+﻿using OneOf;
 using BreadTh.DataLayoutExpectations.Mcintyre321.ValueOf;
 using BreadTh.DataLayoutExpectations.Interface;
 using System.Globalization;
 using BreadTh.DataLayoutExpectations.Error;
+using System.Text.Json.Nodes;
+using System.Text.Json;
 
 namespace BreadTh.DataLayoutExpectations;
 
 public abstract class JsonDoubleExpectation<TSelf> : ValueOf<double, TSelf>, IJsonExpectation<TSelf> where TSelf : JsonDoubleExpectation<TSelf>, IValueOf<double, TSelf>, new()
 {
-    public static OneOf<ExpectationViolations, TSelf> From(JToken token, string path, bool required) =>
-        token.Type switch
+    public static OneOf<ExpectationViolations, TSelf> From(JsonElement element, string path, bool required) =>
+        element.ValueKind switch
         {
-            JTokenType.None => NullHandle(path, required),
-            JTokenType.Null => NullHandle(path, required),
-            JTokenType.Undefined => NullHandle(path, required),
-            JTokenType.Object => new ExpectationViolations("79574ce9-ca81-432f-891b-dfbbf6220412", $"@({path}) Expected a primitive, but got an object."),
-            JTokenType.Array => new ExpectationViolations("ca48ed16-52ac-49b7-9d09-a5bec3175663", $"@({path}) Expected a primitive, but got an array."),
-            _ => ParseAndValidate(token, path)
+            JsonValueKind.Null => NullHandle(path, required),
+            JsonValueKind.Undefined => NullHandle(path, required),
+            JsonValueKind.Object => new ExpectationViolations("79574ce9-ca81-432f-891b-dfbbf6220412", $"@({path}) Expected a primitive, but got an object."),
+            JsonValueKind.Array => new ExpectationViolations("ca48ed16-52ac-49b7-9d09-a5bec3175663", $"@({path}) Expected a primitive, but got an array."),
+            _ => ParseAndValidate(element, path)
         };
 
-    private static OneOf<ExpectationViolations, TSelf> ParseAndValidate(JToken token, string path)
+    private static OneOf<ExpectationViolations, TSelf> ParseAndValidate(JsonElement element, string path)
     {
-        var stringValue = token.ToString();
+        var stringValue = element.ToString();
 
         if (double.TryParse(stringValue, out double result))
             return TSelf.From(result).Validate(path);
@@ -36,8 +36,8 @@ public abstract class JsonDoubleExpectation<TSelf> : ValueOf<double, TSelf>, IJs
     protected static OneOf<ExpectationViolations, TSelf> NullHandle(string path, bool required) =>
         required ? new ExpectationViolations("f6d42808-57e1-496b-b737-9fc05b47d53b", $"@({path}) Expected a value, but got nothing.") : (TSelf)null;
 
-    public JToken ToJToken(string path) =>
-        new JValue(Value);
+    public JsonNode ToJsonNode(string path) =>
+        Value;
 
     public static bool operator ==(JsonDoubleExpectation<TSelf> wrapped, double primitive) =>
         wrapped.Value == primitive;
