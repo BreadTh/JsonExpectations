@@ -4,6 +4,7 @@ using BreadTh.DataLayoutExpectations.Interface;
 using BreadTh.DataLayoutExpectations.Error;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace BreadTh.DataLayoutExpectations;
 
@@ -16,17 +17,17 @@ public abstract class JsonStringExpectation<TSelf> : ValueOf<string, TSelf>, IJs
             JsonValueKind.Undefined => NullHandle(path, required),
             JsonValueKind.Object => new ExpectationViolations("3533e38f-c662-4e8f-894f-4f3f7877fcc5", $"@({path}) Expected a primitive, but got an object."),
             JsonValueKind.Array => new ExpectationViolations("27e19871-a8e5-4b87-b8c9-3e8ffaba02eb", $"@({path}) Expected a primitive, but got an array."),
-            _ => TSelf.From(element.ToString()).Validate(path)
+            _ => TSelf.From(Regex.Unescape(element.ToString())).Validate(path)
         };
 
     protected virtual OneOf<ExpectationViolations, TSelf> Validate(string path) =>
         (TSelf)this;
 
     protected static OneOf<ExpectationViolations, TSelf> NullHandle(string path, bool required) =>
-        required ? new ExpectationViolations("ad774497-425c-4dc1-aaf4-3693831bc14d", $"@({path}) Expected a value, but got nothing.") : (TSelf)null;
+        required ? new ExpectationViolations("ad774497-425c-4dc1-aaf4-3693831bc14d", $"@({path}) Expected a value, but got nothing.") : (TSelf)null!;
 
     public JsonNode ToJsonNode(string path) =>
-        Value;
+        (JsonNode)Value!;
 
     public static bool operator ==(JsonStringExpectation<TSelf> wrapped, string primitive) =>
         wrapped.Value == primitive;

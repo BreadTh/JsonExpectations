@@ -4,12 +4,14 @@ using BreadTh.DataLayoutExpectations.Interface;
 using BreadTh.DataLayoutExpectations.Error;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace BreadTh.DataLayoutExpectations;
 
-public abstract class JsonListExpectation<TElement, TSelf> : ValueOf<IEnumerable<TElement>, TSelf>, IJsonExpectation<TSelf>
+public abstract class JsonListExpectation<TElement, TSelf> : ValueOf<List<TElement>, TSelf>, IJsonExpectation<TSelf>
     where TElement : class, IJsonExpectation<TElement>
-    where TSelf : JsonListExpectation<TElement, TSelf>, IValueOf<IEnumerable<TElement>, TSelf>, new()
+    where TSelf : JsonListExpectation<TElement, TSelf>, IValueOf<List<TElement>, TSelf>, new()
 {
     public static OneOf<ExpectationViolations, TSelf> From(JsonElement element, string path, bool required) =>
         element.ValueKind switch
@@ -66,5 +68,11 @@ public abstract class JsonListExpectation<TElement, TSelf> : ValueOf<IEnumerable
             result.Add(token);
         }
         return new JsonArray(result.ToArray());
+    }
+
+    public TElement this[int index]
+    {
+        get => Value[index];
+        set => Value[index] = value;
     }
 }

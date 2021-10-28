@@ -1,17 +1,52 @@
-﻿using Apparatus.AOT.Reflection;
-using OneOf;
-using System.ComponentModel.DataAnnotations;
-using System.Reflection;
+﻿using OneOf;
 using BreadTh.DataLayoutExpectations.Interface;
 using BreadTh.DataLayoutExpectations.Error;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
+using System;
+using System.Collections.Generic;
 
 namespace BreadTh.DataLayoutExpectations;
 
+public interface IJsonObjectExpectationPropAccessor
+{
+    string GetJsonName();
+    JsonNode ToJsonNode(string path);
+    ExpectationViolations TryCreateAndSet(JsonElement element, string path);
+}
+
+public record class JsonObjectExpectationPropAccessor<T>(string Name, Func<T?> Getter, Action<T> Setter, bool required) : IJsonObjectExpectationPropAccessor where T : class, IJsonExpectation<T>
+{
+    public string GetJsonName() =>
+        Name;
+
+    public JsonNode ToJsonNode(string path) 
+    {
+        var instance = Getter();
+        if(instance is null)
+            return null!;
+
+        var value = instance.ToJsonNode(path);
+        return value;
+    }
+
+    public ExpectationViolations TryCreateAndSet(JsonElement element, string path) =>
+        T.From(element, path, required).Match( 
+            (ExpectationViolations violations) => violations,
+            (T instance) => 
+            {
+                Setter(instance);
+                return new ExpectationViolations();
+            }
+        );
+}
+
 public abstract class JsonObjectExpectation<TSelf> : IJsonRootExpectation<TSelf> where TSelf : JsonObjectExpectation<TSelf>, new()
 {
+    private static JsonElement jsonElementNull = JsonDocument.Parse("null").RootElement;
+
+    protected abstract IEnumerable<IJsonObjectExpectationPropAccessor> GetPropAccessors();
+
     public static OneOf<ExpectationViolations, TSelf> FromJsonString(string rawJson)
     {
         JsonDocument document;
@@ -36,12 +71,12 @@ public abstract class JsonObjectExpectation<TSelf> : IJsonRootExpectation<TSelf>
 
     public static OneOf<ExpectationViolations, TSelf> From(JsonElement element, string path, bool required)
     {
-        if (element.ValueKind != JsonValueKind.Object) 
+        if (element.ValueKind != JsonValueKind.Object)
         {
             if(element.ValueKind == JsonValueKind.String)
-                return FromStringifiedObject(element.ToString(), path, required);
+                return FromStringifiedObject(element.ToString(), path, required);   
             else if (!required && element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
-                return (TSelf)null;
+                return (TSelf)null!;
             else
                 return new ExpectationViolations("f6c9e553-16b3-4c2d-92a8-2ba9c007b16e", $"@({path}) Expected an object, but got {element.ValueKind}");
         }
@@ -49,42 +84,12 @@ public abstract class JsonObjectExpectation<TSelf> : IJsonRootExpectation<TSelf>
         var instance = new TSelf();
         var violations = new ExpectationViolations();
 
-        var properties = GetProperties();
-
-        foreach (var prop in properties)
+        foreach(var accessor in instance.GetPropAccessors()) 
         {
-            string? propNameInJson = GetPropName(prop);
-            string propPath = path + "." + propNameInJson;
-            
-            JsonElement propElement;
-            if (!element.TryGetProperty(propNameInJson, out propElement))
-                propElement = new JsonElement();
-
-            if (GetInterfaceOfProp<IJsonExpectation<TSelf>>(prop) is null)
-                throw new Exception($"@({propPath}) Implementations of {typeof(JsonObjectExpectation<>).Name}'s properties must implement the interface {typeof(IJsonExpectation<>).Name}.");
-
-            MethodInfo? fromMethod = GetMethodOfProp(prop, "From", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy, new[] { typeof(JsonElement), typeof(string), typeof(bool) });
-
-            if (fromMethod is null)
-                throw new Exception($"This shouldn't happen. What'd you do? The {typeof(IJsonExpectation<>).Name} interface was found, but the public static From(JsonElement, string, bool) was not.");
-
-            var propRequired = GetPropAttributes(prop).Any((Attribute attribute) => attribute is RequiredAttribute);
-
-            dynamic? valueOrViolation = fromMethod.Invoke(null, new object[] { propElement, propPath, propRequired });
-
-            if (valueOrViolation is null)
-                throw new Exception("From(JToken, String) must always return a value. Null is not allowed.");
-
-            var SwitchMethod = valueOrViolation.GetType().GetMethod("Switch", BindingFlags.Public | BindingFlags.Instance, new[] { typeof(Action<ExpectationViolations>), typeof(Action<object>) });
-
-            if (SwitchMethod is null)
-                throw new Exception("This shouldn't happen. What'd you do? public static From(JToken, String)'s return value did not have a public Switch(Action<JsonExpectationViolations>, Action<object>) method");
-
-            //Can this be done with AOT reflection? Again Method.Invoke, but on an instance this time
-            SwitchMethod.Invoke(valueOrViolation, new object[] {
-                new Action<ExpectationViolations>((ExpectationViolations newViolations) => violations.Add(newViolations)),
-                new Action<object>((object value) => SetPropValue(prop, instance, value, propPath))
-            });
+            var propName = accessor.GetJsonName();
+            var propFound = element.TryGetProperty(propName, out JsonElement childElement);
+            var potentialViolations = accessor.TryCreateAndSet(propFound ? childElement : jsonElementNull, path);
+            violations.Add(potentialViolations);
         }
 
         if (violations.IsEmpty())
@@ -97,25 +102,9 @@ public abstract class JsonObjectExpectation<TSelf> : IJsonRootExpectation<TSelf>
     {
         var result = new JsonObject();
 
-        foreach (var prop in GetProperties())
-        {
-            var propNameInJson = GetPropName(prop);
-
-            var propPath = $"{path}.{propNameInJson}";
-
-            var propValue = GetPropValue(prop, (TSelf)this);
-
-            if (propValue is null)
-                continue;
-
-            //Note that IJsonExpectation<> extends IJsonExpectationInstance
-            if (propValue is not IJsonExpectationInstance jsonInterface)
-                throw new Exception($"@({propPath}) All implementations of {typeof(JsonObjectExpectation<>).GetGenericTypeDefinition().Name.Replace("`1", "<OuterType>")} properties' must implement the interface {typeof(IJsonExpectation<>).GetGenericTypeDefinition().Name.Replace("`1", "<InnerType>")}.");
-
-            var propValueAsJToken = jsonInterface.ToJsonNode(propPath);
-            result.Add(propNameInJson, propValueAsJToken);
-        }
-
+        foreach (var accessor in GetPropAccessors())
+            result.Add(accessor.GetJsonName(), accessor.ToJsonNode(path));
+        
         return result;
     }
 
@@ -143,75 +132,4 @@ public abstract class JsonObjectExpectation<TSelf> : IJsonRootExpectation<TSelf>
         document.Dispose();
         return result;
     }
-
-    private static IEnumerable<OneOf<Apparatus.AOT.Reflection.IPropertyInfo, System.Reflection.PropertyInfo>> GetProperties()
-    {
-        bool registeredForAotReflection = MetadataStore<TSelf>.Data is not null;
-
-        if (registeredForAotReflection)
-            return AOTReflection.GetProperties<TSelf>().Values
-                .Select(item => OneOf<IPropertyInfo, PropertyInfo>.FromT0(item));
-        else
-            return typeof(TSelf).GetProperties()
-                .Select(item => OneOf<IPropertyInfo, PropertyInfo>.FromT1(item));
-    }
-
-    private static string GetPropName(OneOf<IPropertyInfo, PropertyInfo> prop) =>
-        prop.Match(
-            (IPropertyInfo aotProp) =>
-            {
-                Attribute? jsonPropertyAttribute = aotProp.Attributes.FirstOrDefault(attribute => attribute.GetType() == typeof(JsonPropertyNameAttribute));
-                return jsonPropertyAttribute is null ? aotProp.Name : (((JsonPropertyNameAttribute)jsonPropertyAttribute).Name ?? aotProp.Name);
-            },
-            (PropertyInfo runtimeProp) =>
-            {
-                object? jsonPropertyAttribute = runtimeProp.GetCustomAttributes(true).FirstOrDefault(attribute => attribute.GetType() == typeof(JsonPropertyNameAttribute));
-                return jsonPropertyAttribute is null ? runtimeProp.Name : (((JsonPropertyNameAttribute)jsonPropertyAttribute).Name ?? runtimeProp.Name);
-            });
-
-
-    private static Type? GetInterfaceOfProp<TInterface>(OneOf<IPropertyInfo, PropertyInfo> prop) =>
-        prop.Match(
-            //Can this be done with AOT reflection without going down the type.GetInterface route? Is it worth it?
-            (IPropertyInfo aotProp) => aotProp.PropertyType,
-            (PropertyInfo runtimeProp) => runtimeProp.PropertyType
-        ).GetInterface(typeof(IJsonExpectation<>).GetGenericTypeDefinition().Name);
-
-    private static MethodInfo? GetMethodOfProp(OneOf<IPropertyInfo, PropertyInfo> prop, string name, BindingFlags bindingAttr, Type[] types) =>
-        prop.Match(
-            //Can this be done with AOT reflection without going down the type.GetInterface route? Is it worth it?
-            (IPropertyInfo aotProp) => aotProp.PropertyType,
-            (PropertyInfo runtimeProp) => runtimeProp.PropertyType
-        ).GetMethod(name, bindingAttr, types);
-
-    private static Attribute?[] GetPropAttributes(OneOf<IPropertyInfo, PropertyInfo> prop) =>
-        prop.Match(
-            (IPropertyInfo aotProp) => aotProp.Attributes,
-            (PropertyInfo runtimeProp) => runtimeProp.GetCustomAttributes(true).Select(attribute => attribute as Attribute).ToArray()
-        );
-
-    private static void SetPropValue(OneOf<IPropertyInfo, PropertyInfo> prop, TSelf instance, object value, string propPath) =>
-        prop.Switch(
-            (IPropertyInfo aotProp) =>
-            {
-                if (value is not null) //aotProp.TrySetValue throws if value is null, but null-value is valid behaviour if the field is not required.
-                    if (!aotProp.TrySetValue(instance, value))
-                        throw new Exception($"This shouldn't happen. What'd you do? Could not set {propPath} to {value}");
-            },
-            (PropertyInfo runtimeProp) =>
-                runtimeProp.SetValue(instance, value)
-        );
-
-    private static object? GetPropValue(OneOf<IPropertyInfo, PropertyInfo> prop, TSelf instance) =>
-        prop.Match(
-            (IPropertyInfo aotProp) =>
-            {
-                if (aotProp.TryGetValue(instance, out object value))
-                    return value;
-                else
-                    return null;
-            },
-            (PropertyInfo runtimeProp) =>
-                runtimeProp.GetValue(instance)
-        );
 }

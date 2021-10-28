@@ -7,6 +7,9 @@
 //This is a version of https://github.com/mcintyre321/ValueOf modified to accomondate the IValueOf<TValue, TThis> interface with a static abstract TThis From(TValue) method.
 //Hopefully we can get such functionality in the main repository and nuget package when static abstract is more widely compatible.
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 

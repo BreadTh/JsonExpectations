@@ -1,28 +1,19 @@
-﻿using Apparatus.AOT.Reflection;
-using BreadTh.DataLayoutExpectations;
+﻿using BreadTh.DataLayoutExpectations;
 using BreadTh.DataLayoutExpectations.Error;
 using OneOf;
+using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 
 //You should always set your culture in your applications, even if you aren't using this library.
 //Set it to your local CultureInfo if need be, but don't let it depend on the runtime environment.
-//This example iss set up for InvariantCulture.
+//This example is set up for InvariantCulture.
 Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
-
-//Apparatus.AOT.Reflection lets us do compiletime reflection, meaning that we get reflection magic but without the runtime overhead.
-//But there's a catch: The source generators are still a little limited in what they can "know" about at compile time,
-//so the following call is essencially a helper for the source generator. Think of it as registering the model for compiletime reflection.
-//The function does not actually need to be called, just included somewhere in the source code with the concrete type as the generic parameter,
-//but to keep the source generators' magic from being less mystical, one might as well call the function.
-//Another option is to put the call on an unused method on the object itself, as is done with MyModel.InnerObject
-//If the registration is omitted, the system will fall back on runtime reflection. It'll still work, but it'll be slower.
-//Not really a big deal unless your application has to be very performant.
-//For more information, check out: https://github.com/byme8/Apparatus.AOT.Reflection
-GenericHelper.Bootstrap<MyModel>();
-GenericHelper.Bootstrap<StringifiedObject>();
 
 //let's make some json string example data to run JsonExpectation parser on.
 //We're using a dictionary rather than an anonymous object to be able to use the specialProperty name.
@@ -30,7 +21,7 @@ string successText = JsonSerializer.Serialize(new Dictionary<string, object>
 {
     { "Required", "Hi." },
     { "Excited", "Hello World!"},
-    { "InternationalGreetings", new List<string> { "Hi", "Bonjour", "Hello", "Hola", "Zdravstvuyte", "Nǐn hǎo", "Salve", "Konnichiwa", "Guten Tag", "Olá", "Anyoung haseyo", "Asalaam alaikum" } },
+    { "InternationalGreetings", new List<string> { "Hi", "Bonjour", "Hello", "Hola", "Zdravstvuyte", "N\\u01D0n h\\u01CEo", "Salve", "Konnichiwa", "Guten Tag", "Olá", "Anyoung haseyo", "Asalaam alaikum" } },
     { "Spec!al::Property", "HI!"},
     { "Inner", new { InnerMessage = "Hello" } },
     { "Option", "Def"},
@@ -67,7 +58,7 @@ Console.WriteLine("Parsing successText:");
 Print(MyModel.FromJsonString(successText));
 Console.WriteLine("\nParsing failText:");
 Print(MyModel.FromJsonString(failText));
-Console.ReadLine();
+//Console.ReadLine();
 
 //The result of FromJsonString is a "OneOf". OneOf is a representation of multiple outcomes.
 //In this case its used to return either information about what went wrong when parsing the model,
@@ -87,7 +78,13 @@ void PrintIfInnerMessageIsHello(MyModel result)
     if(result.Excited == "Hello World!")
         //likewise when we want to serialized, the result will come out as if was just a bunch of primitives.
         Console.WriteLine("\t" + result.ToJsonString(true).Replace("\n", "\n\t"));
+    
+    //Both properly escaped and not escaped characters are read and printed correctly (You may need to adjust your console settings for them to display, though!)
+    Console.WriteLine("\t"+result.InternationalGreetings[5]);
+    Console.WriteLine("\t"+result.InternationalGreetings[9]);
+    Console.Write('\u2103'); //℃ character code
 }
+
 
 public class MyModel : JsonObjectExpectation<MyModel>
 {
@@ -147,6 +144,27 @@ public class MyModel : JsonObjectExpectation<MyModel>
 
     [Required]
     public StringifiedObject StringifiedObject { get; set; } = null!;
+
+    protected override IEnumerable<IJsonObjectExpectationPropAccessor> GetPropAccessors() =>
+        new List<IJsonObjectExpectationPropAccessor>()
+        {   new JsonObjectExpectationPropAccessor<Message>("Optional", () => Optional, value => Optional = value, false)
+        ,   new JsonObjectExpectationPropAccessor<Message>("Required", () => Required, value => Required = value, true)
+        ,   new JsonObjectExpectationPropAccessor<ExcitedMessage>("Excited", () => Excited, value => Excited = value, true)
+        ,   new JsonObjectExpectationPropAccessor<InternationalGreetingList>("InternationalGreetings", () => InternationalGreetings, value => InternationalGreetings = value, true)
+        ,   new JsonObjectExpectationPropAccessor<Message>("Spec!al::Property", () => SpecialProperty, value => SpecialProperty = value, true)
+        ,   new JsonObjectExpectationPropAccessor<InnerObject>("Inner", () => Inner, value => Inner = value, true)
+        ,   new JsonObjectExpectationPropAccessor<Option>("Option", () => Option, value => Option = value, true)
+        ,   new JsonObjectExpectationPropAccessor<MyInt>("Integer", () => Integer, value => Integer = value, true)
+        ,   new JsonObjectExpectationPropAccessor<MyInt>("Integer2", () => Integer2, value => Integer2 = value, true)
+        ,   new JsonObjectExpectationPropAccessor<MyDouble>("Number", () => Number, value => Number = value, true)
+        ,   new JsonObjectExpectationPropAccessor<MyDouble>("Number2", () => Number2, value => Number2 = value, true)
+        ,   new JsonObjectExpectationPropAccessor<MyDouble>("Number3", () => Number3, value => Number3 = value, true)
+        ,   new JsonObjectExpectationPropAccessor<MyBool>("Boolean", () => Boolean, value => Boolean = value, true)
+        ,   new JsonObjectExpectationPropAccessor<MyBool>("Boolean2", () => Boolean2, value => Boolean2 = value, true)
+        ,   new JsonObjectExpectationPropAccessor<MyBool>("Boolean3", () => Boolean3, value => Boolean3 = value, true)
+        ,   new JsonObjectExpectationPropAccessor<StringifiedObject>("StringifiedObject", () => StringifiedObject, value => StringifiedObject = value, true)
+        };
+
 }
 
 public class Message : JsonStringExpectation<Message> { }
@@ -168,8 +186,10 @@ public class InnerObject : JsonObjectExpectation<InnerObject>
     [Required]
     public Message InnerMessage { get; set; } = null!;
 
-    public void BootstrapTypeForAotSourceGenerator() =>
-        GenericHelper.Bootstrap<InnerObject>();
+    protected override IEnumerable<IJsonObjectExpectationPropAccessor> GetPropAccessors() =>
+        new List<IJsonObjectExpectationPropAccessor>()
+        {   new JsonObjectExpectationPropAccessor<Message>("InnerMessage", () => InnerMessage, value => InnerMessage = value, true)        
+        };
 }
 
 //the enum does not have to be nested.
@@ -184,7 +204,12 @@ public class MyBool : JsonBoolExpectation<MyBool> { }
 public class StringifiedObject : JsonObjectExpectation<StringifiedObject> 
 {
     [Required]
-    public MyString Field { get; set; } = null!;        
+    public MyString Field { get; set; } = null!;
+
+    protected override IEnumerable<IJsonObjectExpectationPropAccessor> GetPropAccessors() =>
+        new List<IJsonObjectExpectationPropAccessor>()
+        {   new JsonObjectExpectationPropAccessor<MyString>("Field", () => Field, value => Field = value, true)
+        };
 }
 
 public class MyString : JsonStringExpectation<MyString> { }

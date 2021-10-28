@@ -1,4 +1,7 @@
-﻿namespace BreadTh.DataLayoutExpectations.Error;
+﻿using System.Collections.Generic;
+using System.Linq;
+
+namespace BreadTh.DataLayoutExpectations.Error;
 
 public record ExpectationViolations(List<ExpectationViolation> Violations)
 {

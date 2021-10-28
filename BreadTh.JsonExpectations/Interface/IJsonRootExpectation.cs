@@ -9,4 +9,3 @@ public interface IJsonRootExpectation<TSelf> : IJsonExpectation<TSelf> where TSe
 
     string ToJsonString(bool indented);
 }
-
